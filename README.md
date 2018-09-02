@@ -4,3 +4,5 @@ a. Check PLEO Token balance
 b. Create New PLEO Wallet
 c. Link an existing PLEO Wallet
 d. Token transfer from one PLEO Wallet to another Wallet 
+e. Covers all necessary error cases
+f. Logging of all transactions in database tables for future auditing
