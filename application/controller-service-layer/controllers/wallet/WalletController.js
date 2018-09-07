@@ -3,6 +3,10 @@ module.exports = (function () {
         this.services.walletService.checkBalance(req, res, callback);
     };
 
+    const mosaicBalance = function (req, res, callback) {
+        this.services.walletService.mosaicBalance(req, res, callback);
+    };
+
     const tokenTransfer = function (req, res, callback) {
         this.services.walletService.tokenTransfer(req, res, callback);
     };
@@ -23,12 +27,18 @@ module.exports = (function () {
         this.services.walletService.mosaicTransfer(req, res, callback);
     };
 
+    const mosaicXemTransfer = function (req, res, callback) {
+        this.services.walletService.mosaicXemTransfer(req, res, callback);
+    };
+
     return {
         checkBalance,
+        mosaicBalance,
         tokenTransfer,
         createWallet,
         decryptWallet,
         linkWallet,
         mosaicTransfer,
+        mosaicXemTransfer,
     };
 }());

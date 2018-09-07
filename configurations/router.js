@@ -11,15 +11,26 @@ module.exports = function ({ controllers, views }) {
     views = { json: views.jsonView };
 
     const apis = {
+
         // ----------------------NEM API's---------------------------------
 
         '/api/v1/wallet/getBalance': [{
             method: 'GET',
             action: controllers.walletController.checkBalance,
-            middleware: [
-                middleware.auth('authenticated'),
-                errorHandler,
-            ],
+            // middleware: [
+            //     middleware.auth('authenticated'),
+            //     errorHandler,
+            // ],
+            views,
+        }],
+
+        '/api/v1/wallet/mosaicBalance': [{
+            method: 'GET',
+            action: controllers.walletController.mosaicBalance,
+            // middleware: [
+            //     middleware.auth('authenticated'),
+            //     errorHandler,
+            // ],
             views,
         }],
 
@@ -72,7 +83,19 @@ module.exports = function ({ controllers, views }) {
             ],
             views,
         }],
+
+        '/api/v1/wallet/mosaicXemTransfer': [{
+            method: 'POST',
+            action: controllers.walletController.mosaicXemTransfer,
+            middleware: [
+                middleware.auth('authenticated'),
+                errorHandler,
+            ],
+            views,
+        }],
+
     };
+
 
     return merge(
         apis,
