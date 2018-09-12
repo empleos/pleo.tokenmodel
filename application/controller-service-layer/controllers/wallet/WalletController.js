@@ -31,6 +31,10 @@ module.exports = (function () {
         this.services.walletService.mosaicXemTransfer(req, res, callback);
     };
 
+    const transferPleoToOtherWallet = function (req, res, callback) {
+        this.services.walletService.transferPleoToOtherWallet(req, res, callback);
+    };
+
     return {
         checkBalance,
         mosaicBalance,
@@ -40,5 +44,6 @@ module.exports = (function () {
         linkWallet,
         mosaicTransfer,
         mosaicXemTransfer,
+        transferPleoToOtherWallet,
     };
 }());
