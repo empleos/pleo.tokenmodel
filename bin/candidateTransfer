@@ -1,0 +1,75 @@
+#! /app/.heroku/node/bin/node
+require('../configurations/init.js');
+const request = require('request-promise');
+const nem = require('nem-sdk').default;
+const kms = require('../application/controller-service-layer/services/AWS/KMSService');
+const nemService = require('../application/controller-service-layer/services/wallet/common');
+
+async function main() {
+    try {
+        const profile = await domain.ProfileContact.findAll({
+            where: {
+                paidStatus: 'paid',
+                candidatePaidStatus: 'pending',
+            },
+            include: [{
+                model: domain.CandidateProfile,
+                attributes: ['userId', 'id'],
+                include: [{
+                    model: domain.User,
+                    attributes: ['id', 'walletAddress'],
+                }],
+            }],
+            group: ['CandidateProfile.id', 'CandidateProfile->User.id'],
+            attributes: [[Sequelize.fn('sum', Sequelize.col('pleo_token')), 'pleoSum']],
+        });
+        // console.log(profile);
+        profile.forEach(async (row) => {
+            const pleoSum = row.dataValues.pleoSum;
+            const candidateProfileId = row.dataValues.CandidateProfile.id;
+            const userId = row.dataValues.CandidateProfile.dataValues.userId;
+            const walletAddress = row.dataValues.CandidateProfile.User.walletAddress;
+            const candidatePart = pleoSum * process.env.CANDIDATE_PART;
+            const amountTobeTransfred = candidatePart * process.env.PLEO_DIVISIBILITY;
+            const privateKey = process.env.EMPLEOS_PRIVATE_KEY;
+
+            // Transferring funds
+            const result = await nemService.pleoTransfer(privateKey, walletAddress, amountTobeTransfred);
+
+            if (result.tranferRes.code !== 1) throw result;
+
+            const networkFee = result.transactionEntity.fee / process.env.XEM_DIVISIBILITY;
+
+            // Log the response
+            await domain.NemLog.createLog({
+                type: 'CANDIDATE_TRANSFER_TRANSACTION_SCHEDULER',
+                toUserId: userId,
+                fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                toWalletId: walletAddress,
+                pleoTransacted: candidatePart,
+                networkFee,
+                response: result,
+                status: 'SUCCESS',
+            });
+            // Updating the user
+            const status = await domain.ProfileContact.update({
+                candidatePaidStatus: 'paid',
+            }, {
+                    where: {
+                        candidateProfileId,
+                    },
+                });
+        });
+    } catch (err) {
+        if (global.Raven) global.Raven.captureException(JSON.stringify(err));
+        // Log the response
+        await domain.NemLog.createLog({
+            type: 'CANDIDATE_TRANSFER_TRANSACTION_SCHEDULER',
+            fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+            response: err,
+            status: 'ERR_FAILED',
+        });
+    }
+}
+
+main();
