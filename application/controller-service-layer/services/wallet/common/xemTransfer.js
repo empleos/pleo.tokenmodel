@@ -22,7 +22,9 @@ module.exports = (function () {
             const transactionEntity = nem.model.transactions.prepare('transferTransaction')(common, transferTransaction, nem.model.network.data.testnet.id);
 
             // sign and send to NIS
-            return nem.model.transactions.send(common, transactionEntity, endpoint);
+            const result = await nem.model.transactions.send(common, transactionEntity, endpoint);
+
+            return Promise.resolve({ tranferRes: result, transactionEntity });
         } catch (err) {
             return Promise.reject(err);
         }

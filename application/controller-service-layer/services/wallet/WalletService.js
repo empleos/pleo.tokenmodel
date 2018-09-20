@@ -179,6 +179,11 @@ module.exports = (function () {
 
             if (result.tranferRes.code !== 1) {
                 result.message = humanize(result.tranferRes.message);
+                result.type = 'PLEO_TRANSACTION';
+                result.fromUserId = req.loggedInUser.id;
+                result.toUserId = null;
+                result.fromWalletId = req.loggedInUser.walletAddress;
+                result.toWalletId = recipient;
                 throw result;
             }
 
@@ -190,7 +195,28 @@ module.exports = (function () {
                 const maintainXEM = process.env.EMPLOYER_XEM_BALANCE / process.env.XEM_DIVISIBILITY;
                 const transferableXem = maintainXEM - currentBalance;
 
-                await nemService.xemTransfer(process.env.EMPLEOS_PRIVATE_KEY, req.loggedInUser.walletAddress, transferableXem);
+                const xemResult = await nemService.xemTransfer(process.env.EMPLEOS_PRIVATE_KEY, req.loggedInUser.walletAddress, transferableXem);
+
+                if (xemResult.tranferRes.code !== 1) {
+                    xemResult.message = humanize(xemResult.tranferRes.message);
+                    xemResult.type = 'EMPLOYER_MAINTAIN_BALANCE_TRANSFER';
+                    xemResult.fromUserId = null;
+                    xemResult.toUserId = req.loggedInUser.id;
+                    xemResult.fromWalletId = process.env.EMPLEOS_WALLET_ADDRESS;
+                    xemResult.toWalletId = req.loggedInUser.walletAddress;
+                    throw xemResult;
+                }
+                const networkFee = xemResult.transactionEntity.fee / process.env.XEM_DIVISIBILITY;
+                await domain.NemLog.createLog({
+                    type: 'EMPLOYER_MAINTAIN_BALANCE_TRANSFER',
+                    toUserId: req.loggedInUser.id,
+                    fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                    toWalletId: req.loggedInUser.walletAddress,
+                    xemTransacted: transferableXem,
+                    networkFee,
+                    response: xemResult,
+                    status: 'SUCCESS',
+                });
             }
 
             const pleoTransacted = process.env.PURCHASE_PROFILE_FEES / process.env.PLEO_DIVISIBILITY;
@@ -215,10 +241,11 @@ module.exports = (function () {
         } catch (err) {
             // Log the response
             await domain.NemLog.createLog({
-                type: 'PLEO_TRANSACTION',
-                fromUserId: req.loggedInUser.id,
-                fromWalletId: req.loggedInUser.walletAddress,
-                toWalletId: process.env.PLEO_RECEPIENT_WALLET_ADDRESS,
+                type: err.type,
+                fromUserId: err.fromUserId,
+                toUserId: err.toUserId,
+                fromWalletId: err.fromWalletId,
+                toWalletId: err.toWalletId,
                 response: err,
                 status: 'ERR_FAILED',
             });
@@ -318,7 +345,6 @@ module.exports = (function () {
                 message: 'Successfully transfered token',
             });
         } catch (err) {
-            console.log(err);
             // Log the response
             await domain.NemLog.createLog({
                 type: 'PLEO_XEM_TRANSACTION',
@@ -441,23 +467,80 @@ module.exports = (function () {
                     result = await nemService.pleoTransfer(privateKey, recipient, transferableAmount);
                     if (result.tranferRes.code !== 1) {
                         result.message = humanize(result.tranferRes.message);
+                        result.type = 'OTHER_WALLET_TRANSFER_TRANSACTION';
+                        result.fromUserId = req.loggedInUser.id;
+                        result.toUserId = null;
+                        result.fromWalletId = req.loggedInUser.walletAddress;
+                        result.toWalletId = recipient;
                         throw result;
                     }
                 } else {
-                    throw new Error('Insufficient Balance');
+                    result.message = 'Insufficient Balance';
+                    result.type = 'OTHER_WALLET_TRANSFER_TRANSACTION';
+                    result.fromUserId = req.loggedInUser.id;
+                    result.toUserId = null;
+                    result.fromWalletId = req.loggedInUser.walletAddress;
+                    result.toWalletId = recipient;
+                    throw result;
                 }
             } else if (req.loggedInUser.userType === 'candidate') {
                 if (currentBalance >= amount) {
                     result = await nemService.pleoTransfer(privateKey, recipient, transferableAmount);
                     if (result.tranferRes.code !== 1) {
                         result.message = humanize(result.tranferRes.message);
+                        result.type = 'OTHER_WALLET_TRANSFER_TRANSACTION';
+                        result.fromUserId = req.loggedInUser.id;
+                        result.toUserId = null;
+                        result.fromWalletId = req.loggedInUser.walletAddress;
+                        result.toWalletId = recipient;
                         throw result;
                     }
+
+                    const xemBalanceRes = await nemService.xemBalance(req.loggedInUser.walletAddress);
+                    const xemBalance = xemBalanceRes.balance / process.env.XEM_DIVISIBILITY;
+
+                    if (xemBalance < process.env.CHECK_CANDIDATE_BALANCE) {
+                        const maintainXEM = process.env.CANDIDATE_XEM_BALANCE / process.env.XEM_DIVISIBILITY;
+                        const transferableXem = maintainXEM - xemBalance;
+                        const xemResult = await nemService.xemTransfer(process.env.EMPLEOS_PRIVATE_KEY, req.loggedInUser.walletAddress, transferableXem);
+                        if (xemResult.tranferRes.code !== 1) {
+                            xemResult.message = humanize(xemResult.tranferRes.message);
+                            xemResult.type = 'CANDIDATE_MAINTAIN_BALANCE_TRANSFER';
+                            xemResult.fromUserId = null;
+                            xemResult.toUserId = req.loggedInUser.id;
+                            xemResult.fromWalletId = process.env.EMPLEOS_WALLET_ADDRESS;
+                            xemResult.toWalletId = req.loggedInUser.walletAddress;
+                            throw xemResult;
+                        }
+                        const networkFee = xemResult.transactionEntity.fee / process.env.XEM_DIVISIBILITY;
+                        await domain.NemLog.createLog({
+                            type: 'CANDIDATE_MAINTAIN_BALANCE_TRANSFER',
+                            toUserId: req.loggedInUser.id,
+                            fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                            toWalletId: req.loggedInUser.walletAddress,
+                            xemTransacted: transferableXem,
+                            networkFee,
+                            response: xemResult,
+                            status: 'SUCCESS',
+                        });
+                    }
                 } else {
-                    throw new Error('Insufficient Balance');
+                    result.message = 'Insufficient Balance';
+                    result.type = 'OTHER_WALLET_TRANSFER_TRANSACTION';
+                    result.fromUserId = req.loggedInUser.id;
+                    result.toUserId = null;
+                    result.fromWalletId = req.loggedInUser.walletAddress;
+                    result.toWalletId = recipient;
+                    throw result;
                 }
             } else {
-                throw new Error('Invalid call');
+                result.message = 'INAVLID_CALL';
+                result.type = 'OTHER_WALLET_TRANSFER_TRANSACTION';
+                result.fromUserId = req.loggedInUser.id;
+                result.toUserId = null;
+                result.fromWalletId = req.loggedInUser.walletAddress;
+                result.toWalletId = recipient;
+                throw result;
             }
             const networkFee = result.transactionEntity.fee / process.env.XEM_DIVISIBILITY;
 
@@ -477,13 +560,60 @@ module.exports = (function () {
                 message: 'Successfully transfered token',
             });
         } catch (err) {
-            console.log(err);
             // Log the response
             await domain.NemLog.createLog({
-                type: 'OTHER_WALLET_TRANSFER_TRANSACTION',
-                fromUserId: req.loggedInUser.id,
-                fromWalletId: req.loggedInUser.walletAddress,
-                toWalletId: req.body.walletAddress,
+                type: err.type,
+                fromUserId: err.fromUserId,
+                toUserId: err.toUserId,
+                fromWalletId: err.fromWalletId,
+                toWalletId: err.toWalletId,
+                response: err,
+                status: 'ERR_FAILED',
+            });
+
+            return callback({
+                message: err.message,
+            });
+        }
+    };
+
+    const xemTransferToCandidate = async (req, res, callback) => {
+        try {
+            const privateKey = process.env.EMPLEOS_PRIVATE_KEY;
+            const recipient = req.loggedInUser.walletAddress;
+            const amount = process.env.CREATE_WALLET_FREE_CANDIDATE_XEM / process.env.XEM_DIVISIBILITY;
+
+            const result = await nemService.xemTransfer(privateKey, recipient, amount);
+
+            if (result.tranferRes.code !== 1) {
+                result.message = humanize(result.tranferRes.message);
+                throw result;
+            }
+
+            const networkFee = result.transactionEntity.fee / process.env.XEM_DIVISIBILITY;
+
+            // Log the response
+            await domain.NemLog.createLog({
+                type: 'CREATE_WALLET_CANDIDATE_TRANSFER',
+                toUserId: req.loggedInUser.id,
+                fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                toWalletId: recipient,
+                xemTransacted: amount,
+                networkFee,
+                response: result,
+                status: 'SUCCESS',
+            });
+
+            return callback(null, {
+                message: 'Successfully transfered token',
+            });
+        } catch (err) {
+            // Log the response
+            await domain.NemLog.createLog({
+                type: 'CREATE_WALLET_CANDIDATE_TRANSFER',
+                toUserId: req.loggedInUser.id,
+                fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                toWalletId: req.loggedInUser.walletAddress,
                 response: err,
                 status: 'ERR_FAILED',
             });
@@ -505,5 +635,6 @@ module.exports = (function () {
         mosaicXemTransfer,
         candidatePleoTransfer,
         transferPleoToOtherWallet,
+        xemTransferToCandidate,
     };
 }());
