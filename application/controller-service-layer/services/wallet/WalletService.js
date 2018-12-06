@@ -116,23 +116,6 @@ module.exports = (function () {
         }
     };
 
-    const decryptWallet = async (req, res, callback) => {
-        try {
-            // const common = nem.model.objects.create("common")("pulkit", "");
-
-            // // Get the wallet account to decrypt
-            // const walletAccount = wallet.accounts[index];
-
-            // // Decrypt account private key
-            // nem.crypto.helpers.passwordToPrivatekey(common, walletAccount, wallet.algo);
-
-            // return callback(null, common);
-
-        } catch (err) {
-            return callback(err);
-        }
-    };
-
     const linkWallet = async (req, res, callback) => {
         try {
             const address = req.body.walletAddress;
@@ -712,7 +695,6 @@ module.exports = (function () {
         mosaicBalance,
         tokenTransfer,
         createWallet,
-        decryptWallet,
         linkWallet,
         mosaicTransfer,
         mosaicXemTransfer,
