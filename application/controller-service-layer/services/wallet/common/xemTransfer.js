@@ -21,6 +21,13 @@ module.exports = (function () {
             // prepare transaction
             const transactionEntity = nem.model.transactions.prepare('transferTransaction')(common, transferTransaction, nem.model.network.data.testnet.id);
 
+            //Overwriting timestamp and deadline
+            const time = await nem.com.requests.chain.time(endpoint);            
+            let ts=Math.floor(time.receiveTimeStamp/1000);
+            transactionEntity.timeStamp=ts;
+            let due = 60;
+            transactionEntity.deadline=ts + due * 60;
+
             // sign and send to NIS
             const result = await nem.model.transactions.send(common, transactionEntity, endpoint);
 

@@ -1,12 +1,13 @@
 const nem = require('nem-sdk').default;
 
 module.exports = (function () {
-    const pleoTransfer = async (fromPrivateKey, toWalletAddress, quantity) => {
+    const calculateFees = async (fromPrivateKey, toWalletAddress, xemQuantity, pleoQuantity) => {
         try {
             const privateKey = fromPrivateKey;
             const recipient = toWalletAddress;
-            const amount = 1;
-            const message = 'pleo transfer';
+            const message = 'Calculate Fees';
+            const xemAmount = xemQuantity * process.env.XEM_DIVISIBILITY;
+            const pleoAmount = pleoQuantity * process.env.PLEO_DIVISIBILITY;
 
             // endpoint initialisation
             const endpoint = nem.model.objects.create('endpoint')(process.env.NIS_URL, process.env.NIS_PORT);
@@ -19,15 +20,24 @@ module.exports = (function () {
             const mosaicDefinitionMetaDataPair = nem.model.objects.get('mosaicDefinitionMetaDataPair');
 
             // create transfer transaction object
-            const transferTransaction = nem.model.objects.create('transferTransaction')(recipient, amount, message);
+            const transferTransaction = nem.model.objects.create('transferTransaction')(recipient, 1, message);
 
-            // Create a mosaic attachment object
+            // Create a XEM attachment object
+            const xemAttachment = nem.model.objects.create('mosaicAttachment')('nem', 'xem', xemAmount); // divisibility is 6 for this mosaic
+
+            // Push attachment into transaction mosaics
+            transferTransaction.mosaics.push(xemAttachment);
 
             // Create another mosaic attachment
-            const mosaicAttachment = nem.model.objects.create('mosaicAttachment')('empleosdev', 'pleo', quantity);
+            const mosaicAttachment = nem.model.objects.create('mosaicAttachment')('empleosdev', 'pleo', pleoAmount); // divisibility is 3 for this mosaic
 
             // Push attachment into transaction mosaics
             transferTransaction.mosaics.push(mosaicAttachment);
+
+            // Getting XEM definitions
+            const xemSpply = await nem.com.requests.mosaic.supply(endpoint, nem.utils.format.mosaicIdToName(xemAttachment.mosaicId));
+
+            mosaicDefinitionMetaDataPair[nem.utils.format.mosaicIdToName(xemAttachment.mosaicId)].supply = xemSpply.supply;
 
             const res = await nem.com.requests.namespace.mosaicDefinitions(endpoint, mosaicAttachment.mosaicId.namespaceId);
 
@@ -60,15 +70,12 @@ module.exports = (function () {
             let due = 60;
             transactionEntity.deadline=ts + due * 60;
 
-            // Serialize transfer transaction and announce
-            const result = await nem.model.transactions.send(common, transactionEntity, endpoint);
-
-            return Promise.resolve({ tranferRes: result, transactionEntity });
+            return Promise.resolve({ fee: transactionEntity.fee });
         } catch (err) {
             return Promise.reject(err);
         }
     };
     return {
-        pleoTransfer,
+        calculateFees,
     };
 }());

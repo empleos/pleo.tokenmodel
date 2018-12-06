@@ -1,0 +1,64 @@
+#! /app/.heroku/node/bin/node
+
+require('../configurations/init.js');
+const nemService = require('../application/controller-service-layer/services/wallet/common/index.js');
+
+async function main() {
+    try {
+        const Referral = await domain.Referral.findAll({
+            where: {
+                status: 'profile_created',
+            },
+            include: [{
+                model: domain.User,
+                attributes: ['id', 'walletAddress'],
+            }],
+            attributes: ['pleoToken'],
+        });
+        Referral.forEach(async (row) => {
+            const { pleoToken } = row.dataValues;
+            const userId = row.dataValues.User.dataValues.id;
+            const { walletAddress } = row.dataValues.User;
+            const amountTobeTransfred = pleoToken * process.env.PLEO_DIVISIBILITY;
+            const privateKey = process.env.EMPLEOS_PRIVATE_KEY;
+
+            // Transferring funds
+            const result = await nemService.pleoTransfer(privateKey, walletAddress, amountTobeTransfred);
+
+            if (result.tranferRes.code !== 1) throw result;
+
+            const networkFee = result.transactionEntity.fee / process.env.XEM_DIVISIBILITY;
+
+            // Log the response
+            await domain.NemLog.createLog({
+                type: 'REFERRAL_TRANSFER_TRANSACTION_SCHEDULER',
+                toUserId: userId,
+                fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                toWalletId: walletAddress,
+                pleoTransacted: pleoToken,
+                networkFee,
+                response: result,
+                status: 'SUCCESS',
+            });
+            // Updating the Referral table
+            await domain.Referral.update({
+                status: 'paid',
+            }, {
+                    where: {
+                        refererUserId: userId,
+                    },
+                });
+        });
+    } catch (err) {
+        if (global.Raven) global.Raven.captureException(JSON.stringify(err));
+        // Log the response
+        await domain.NemLog.createLog({
+            type: 'REFERRAL_TRANSFER_TRANSACTION_SCHEDULER',
+            fromWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+            response: err,
+            status: 'ERR_FAILED',
+        });
+    }
+}
+
+main();

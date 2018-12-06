@@ -1,4 +1,5 @@
 #! /app/.heroku/node/bin/node
+
 require('../configurations/init.js');
 const request = require('request-promise');
 const nem = require('nem-sdk').default;
@@ -21,7 +22,9 @@ async function main() {
                 }],
             }],
             group: ['CandidateProfile.id', 'CandidateProfile->User.id'],
-            attributes: [[Sequelize.fn('sum', Sequelize.col('pleo_token')), 'pleoSum']],
+            attributes: [
+                [Sequelize.fn('sum', Sequelize.col('pleo_token')), 'pleoSum'],
+            ],
         });
         // console.log(profile);
         profile.forEach(async (row) => {
@@ -55,10 +58,10 @@ async function main() {
             const status = await domain.ProfileContact.update({
                 candidatePaidStatus: 'paid',
             }, {
-                    where: {
-                        candidateProfileId,
-                    },
-                });
+                where: {
+                    candidateProfileId,
+                },
+            });
         });
     } catch (err) {
         if (global.Raven) global.Raven.captureException(JSON.stringify(err));

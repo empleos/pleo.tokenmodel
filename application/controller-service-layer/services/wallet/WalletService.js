@@ -49,6 +49,13 @@ module.exports = (function () {
             // prepare transaction
             const transactionEntity = nem.model.transactions.prepare('transferTransaction')(common, transferTransaction, nem.model.network.data.testnet.id);
 
+            //Overwriting timestamp and deadline
+            const time = await nem.com.requests.chain.time(endpoint);            
+            let ts=Math.floor(time.receiveTimeStamp/1000);
+            transactionEntity.timeStamp=ts;
+            let due = 60;
+            transactionEntity.deadline=ts + due * 60;
+
             // sign and send to NIS
             const result = await nem.model.transactions.send(common, transactionEntity, endpoint);
 
@@ -317,6 +324,13 @@ module.exports = (function () {
             // Prepare the transfer transaction object
             const transactionEntity = nem.model.transactions.prepare('mosaicTransferTransaction')(common, transferTransaction, mosaicDefinitionMetaDataPair, nem.model.network.data.testnet.id);
 
+            //Overwriting timestamp and deadline
+            const time = await nem.com.requests.chain.time(endpoint);            
+            let ts=Math.floor(time.receiveTimeStamp/1000);
+            transactionEntity.timeStamp=ts;
+            let due = 60;
+            transactionEntity.deadline=ts + due * 60;
+;
             // Serialize transfer transaction and announce
             const result = await nem.model.transactions.send(common, transactionEntity, endpoint);
 
@@ -412,6 +426,13 @@ module.exports = (function () {
 
             // Prepare the transfer transaction object
             const transactionEntity = nem.model.transactions.prepare('mosaicTransferTransaction')(common, transferTransaction, mosaicDefinitionMetaDataPair, nem.model.network.data.testnet.id);
+            
+            //Overwriting timestamp and deadline
+            const time = await nem.com.requests.chain.time(endpoint);            
+            let ts=Math.floor(time.receiveTimeStamp/1000);
+            transactionEntity.timeStamp=ts;
+            let due = 60;
+            transactionEntity.deadline=ts + due * 60;
 
             // Serialize transfer transaction and announce
             const result = await nem.model.transactions.send(common, transactionEntity, endpoint);
@@ -624,6 +645,68 @@ module.exports = (function () {
         }
     };
 
+    const transferPleoXemToEmpleos = async (req, res, callback) => {
+        try {
+            const privateKey = await kms.decrypt(req.loggedInUser.privateKey);
+            const fromWalletAddress = req.loggedInUser.walletAddress;
+            const recipient = process.env.EMPLEOS_WALLET_ADDRESS;
+            let xemQuantity = 0;
+            let pleoQuantity = 0;
+            let networkFee = 0;
+            let result = {};
+
+            const xemBal = await nemService.xemBalance(req.loggedInUser.walletAddress);
+            xemQuantity = xemBal.balance / process.env.XEM_DIVISIBILITY;
+
+            const pleoBal = await nemService.pleoBalance(fromWalletAddress);
+            pleoQuantity = pleoBal.balance / process.env.PLEO_DIVISIBILITY;
+            if (xemQuantity > 0) {
+                const { fee } = await nemService.calculateFees(privateKey, recipient, xemQuantity, pleoQuantity);
+                networkFee = fee / process.env.XEM_DIVISIBILITY;
+                if (fee >= xemQuantity) {
+                    xemQuantity = xemQuantity - (fee / process.env.XEM_DIVISIBILITY);
+                    result = await nemService.xemPleoTransfer(privateKey, recipient, xemQuantity, pleoQuantity);
+                    if (result.tranferRes.code !== 1) {
+                        result.message = humanize(result.tranferRes.message);
+                         throw result;
+                    }
+                }
+            }
+
+            // Log the response
+            await domain.NemLog.createLog({
+                type: 'PLEO_XEM_TO_EMPLEOS_TRANSACTION',
+                fromUserId: req.loggedInUser.id,
+                fromWalletId: req.loggedInUser.walletAddress,
+                toWalletId: process.env.EMPLEOS_WALLET_ADDRESS,
+                xemTransacted: xemQuantity,
+                pleoTransacted: pleoQuantity,
+                networkFee,
+                response: result,
+                status: 'SUCCESS',
+            });
+            console.log('result', result);
+            return callback(null, {
+                message: 'Successfully transfered token',
+            });
+        } catch (err) {
+            console.log('err', err);
+            // Log the response
+            await domain.NemLog.createLog({
+                type: 'PLEO_XEM_TO_EMPLEOS_TRANSACTION',
+                fromUserId: req.loggedInUser.id,
+                fromWalletId: req.loggedInUser.walletAddress,
+                toWalletId: req.loggedInUser.walletAddress,
+                response: err,
+                status: 'ERR_FAILED',
+            });
+
+            return callback({
+                message: err.message,
+            });
+        }
+    };
+
     return {
         checkBalance,
         mosaicBalance,
@@ -636,5 +719,6 @@ module.exports = (function () {
         candidatePleoTransfer,
         transferPleoToOtherWallet,
         xemTransferToCandidate,
+        transferPleoXemToEmpleos,
     };
 }());
